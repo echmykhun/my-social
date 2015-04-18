@@ -1,8 +1,8 @@
 /**
  * Created by Евгений on 16.04.2015.
  */
-var transport = require('./transport.js');
-var webRTC = (function (transport) {
+var socketClient = require('./socketClient.js');
+var webRTC = (function (socketClient) {
 
     var getElementById = function (id) {
         var element;
@@ -21,11 +21,10 @@ var webRTC = (function (transport) {
     var SessionDescription = window.mozRTCSessionDescription || window.RTCSessionDescription;
     var pc; // PeerConnection
 
-    var webRTCContainer, localVideoElement, remoteVideoElement, callButtonElement;
+    var webRTCContainer, localVideoElement, remoteVideoElement;
     var webRTCContainerID = 'webRTCContainer',
         localVideoElementID = 'localVideo',
-        remoteVideoElementID = 'remoteVideo',
-        callButtonElementID = 'callButton';
+        remoteVideoElementID = 'remoteVideo';
 
 
     var iceServers = {
@@ -53,28 +52,28 @@ var webRTC = (function (transport) {
         remoteVideoElement.id = remoteVideoElementID;
         remoteVideoElement.setAttribute('autoplay', 'true');
 
-        callButtonElement = document.createElement('button');
-        callButtonElement.id = callButtonElementID;
-        callButtonElement.innerHTML ='✆';
-        callButtonElement.addEventListener('click', function () {
-            createOffer();
-        });
 
         webRTCContainer.appendChild(remoteVideoElement);
         webRTCContainer.appendChild(localVideoElement);
-        webRTCContainer.appendChild(callButtonElement);
 
         navigator.getUserMedia = navigator.getUserMedia || navigator.mozGetUserMedia || navigator.webkitGetUserMedia;
         navigator.getUserMedia(
             {audio: true, video: true}, gotStream, function (error) {
                 console.log(error)
             });
-        transport.on('message', messageHandler);
+
+        document.addEventListener('DOMContentLoaded', function () {
+            var body = document.querySelector('body');
+            body.appendChild(webRTCContainer);
+        });
+
+        socketClient.on('message', messageHandler);
+        socketClient.setRefClickFunction(createOffer);
+
     };
 
 
     var gotStream = function (stream) {
-        callButtonElement.style.display = 'inline-block';
         localVideoElement.src = URL.createObjectURL(stream);
         pc = new PeerConnection(iceServers, optionalRtpDataChannels);
         pc.addStream(stream);
@@ -82,9 +81,13 @@ var webRTC = (function (transport) {
         pc.onaddstream = gotRemoteStream;
     };
 
-    var createOffer = function () {
+    var createOffer = function (toID) {
         pc.createOffer(
-            gotLocalDescription,
+            function (description) {
+                var msg = {toID: toID, data:description};
+                pc.setLocalDescription(description);
+                socketClient.sendMessage(msg);
+            },
             function (error) {
                 console.log(error)
             },
@@ -93,9 +96,13 @@ var webRTC = (function (transport) {
     };
 
 
-    var createAnswer = function () {
+    var createAnswer = function (toID) {
         pc.createAnswer(
-            gotLocalDescription,
+            function (description) {
+                var msg = {toID: toID, data:description};
+                pc.setLocalDescription(description);
+                socketClient.sendMessage(msg);
+            },
             function (error) {
                 console.log(error)
             },
@@ -104,18 +111,21 @@ var webRTC = (function (transport) {
     };
 
 
-    var gotLocalDescription = function (description) {
-        pc.setLocalDescription(description);
-        transport.sendMessage(description);
-    };
+    //var gotLocalDescription = function (description) {
+    //    pc.setLocalDescription(description);
+    //    socketClient.sendMessage(description);
+    //};
 
     var gotIceCandidate = function (event) {
         if (event.candidate) {
-            transport.sendMessage({
-                type: 'candidate',
-                label: event.candidate.sdpMLineIndex,
-                id: event.candidate.sdpMid,
-                candidate: event.candidate.candidate
+            socketClient.sendMessage({
+                toID: event.candidate.toID,
+                data: {
+                    type: 'candidate',
+                    label: event.candidate.sdpMLineIndex,
+                    id: event.candidate.sdpMid,
+                    candidate: event.candidate.candidate
+                }
             });
         }
     };
@@ -124,21 +134,23 @@ var webRTC = (function (transport) {
         remoteVideoElement.src = URL.createObjectURL(event.stream);
     };
 
+    var offerToAnswer = function(message){
+        var acceptOffer = confirm("Someone " + message.id + " wants to speak to you");
+        if(acceptOffer){
+            createAnswer(message.id);
+        }
+    };
+
     var messageHandler = function (message) {
-        if (message.type === 'offer') {
-            pc.setRemoteDescription(new SessionDescription(message));
-            //createAnswer();
-            console.log(message);
-            var acceptOffer = confirm("Someone wants to speak to you");
-            if(acceptOffer){
-                createAnswer();
-            }
+        if (message.data.type === 'offer') {
+            pc.setRemoteDescription(new SessionDescription(message.data));
+            offerToAnswer(message);
         }
-        else if (message.type === 'answer') {
-            pc.setRemoteDescription(new SessionDescription(message));
+        else if (message.data.type === 'answer') {
+            pc.setRemoteDescription(new SessionDescription(message.data));
         }
-        else if (message.type === 'candidate') {
-            var candidate = new IceCandidate({sdpMLineIndex: message.label, candidate: message.candidate});
+        else if (message.data.type === 'candidate') {
+            var candidate = new IceCandidate({sdpMLineIndex: message.data.label, candidate: message.data.candidate, toID:message.id});
             pc.addIceCandidate(candidate);
         }
     };
@@ -146,15 +158,12 @@ var webRTC = (function (transport) {
 
     init();
 
-    document.addEventListener('DOMContentLoaded', function () {
-        var body = document.querySelector('body');
-        body.appendChild(webRTCContainer);
-    });
+
 
 
     return webRTC;
 
-}(transport));
+}(socketClient));
 
 
 module.exports = webRTC;

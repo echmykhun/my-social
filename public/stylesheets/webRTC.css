@@ -1,22 +1,25 @@
 #webRTCContainer{
-    width: 100vw;
-    height: 100vh;
+    width: 75vw;
+    height: 75vh;
     margin: 0;
-    background: #111;
+    background: #aaa;
     text-align: center;
+    float: right;
 }
 #remoteVideo {
-    height: 70%;
-    margin-top: 5%;
+    width: 75%;
+    height: 100%;
     background: #000;
+    float: left;;
 }
 
 #localVideo {
-    width: 20%;
-    position: fixed;
-    right: 1.1em;
-    bottom: 1em;
-    border: 1px solid #333;
+    width: 25%;
+    /*height: 25%;*/
+    /*position: absolute;*/
+    /*right: 1.1em;*/
+    /*bottom: 1em;*/
+    /*border: 1px solid #333;*/
     background: #000;
 }
 
